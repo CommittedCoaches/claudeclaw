@@ -28,3 +28,8 @@ output "litellm_health_check" {
   description = "Command to check LiteLLM health (run from within VPC)"
   value       = "curl http://${module.litellm.alb_dns_name}:4000/health"
 }
+
+output "github_deploy_role_arn" {
+  description = "IAM role ARN for GitHub Actions deploy workflow — set as AWS_DEPLOY_ROLE_ARN secret in GitHub"
+  value       = module.security.github_deploy_role_arn
+}

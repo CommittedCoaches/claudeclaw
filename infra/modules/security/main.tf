@@ -71,6 +71,76 @@ resource "aws_cloudtrail" "audit" {
   depends_on = [aws_s3_bucket_policy.cloudtrail]
 }
 
+# --- GitHub Actions OIDC Deploy Role ---
+
+data "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+resource "aws_iam_role" "github_actions_deploy" {
+  name        = "claudeclaw-github-actions-deploy"
+  description = "Allows GitHub Actions to deploy ClaudeClaw to EC2 instances via SSM"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = data.aws_iam_openid_connect_provider.github.arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:CommittedCoaches/claudeclaw:ref:refs/heads/master"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    Name = "claudeclaw-github-actions-deploy"
+  }
+}
+
+resource "aws_iam_policy" "github_actions_deploy" {
+  name        = "claudeclaw-github-actions-deploy"
+  description = "EC2 describe + SSM send-command for deploying via git pull"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeTags",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:SendCommand",
+          "ssm:GetCommandInvocation",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+
+  tags = {
+    Name = "claudeclaw-github-actions-deploy"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_deploy" {
+  role       = aws_iam_role.github_actions_deploy.name
+  policy_arn = aws_iam_policy.github_actions_deploy.arn
+}
+
 # --- MFA Enforcement Policy ---
 
 resource "aws_iam_policy" "mfa_enforcement" {
