@@ -1,0 +1,19 @@
+name: Validate Developer Config
+
+on:
+  pull_request:
+    paths:
+      - 'infra/developers.yaml'
+
+jobs:
+  validate:
+    name: Validate developers.yaml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate developer entries
+        run: bash infra/scripts/validate-developer.sh

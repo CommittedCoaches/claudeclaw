@@ -153,35 +153,28 @@ For **developers** setting up their instance:
 
 ## Adding a New Developer
 
-Requires an admin with Terraform access.
+### Self-service (new dev creates a PR)
 
-1. Add entry to `terraform.tfvars`:
-   ```hcl
-   developers = {
-     existing_dev = { ... }
-     newdev = {
-       instance_type     = "t3.medium"
-       github_username   = "gh-user"
-       slack_user_id     = "U12345678"
-       telegram_token    = "123456:ABC-DEF..."
-       telegram_user_ids = [987654321]
-       # iam_policy_arns defaults to restricted; add AdministratorAccess for admins
-     }
-   }
+1. Fork the repo and add your entry to `infra/developers.yaml`:
+   ```yaml
+   your_name:
+     github_username: your-github-username
+     slack_user_id: "U..."           # Slack profile -> More -> Copy member ID
+     telegram_user_ids: [123456789]  # @userinfobot on Telegram -> your numeric ID
+     extra_repos: []                 # additional repos beyond the shared set
    ```
 
-2. Apply:
-   ```bash
-   terraform apply
-   ```
+2. Create a PR. CI will validate your config — fix any errors it reports.
 
-3. Get the developer's onboarding command:
-   ```bash
-   terraform output onboard_commands
-   # => { "newdev" = "./scripts/onboard-dev.sh i-0abc123..." }
-   ```
+3. After merge, the PR gets a comment with your onboarding steps.
 
-4. Share that command with the developer. They follow the "Developer Onboarding" steps above.
+4. An admin adds your secrets (telegram_token, slack_token) to `terraform.tfvars`, runs `terraform apply`, and shares your instance ID.
+
+### Admin-only (manual)
+
+1. Add the dev to both `infra/developers.yaml` and `terraform.tfvars` (for secrets).
+2. `terraform apply`
+3. Share the onboard command: `terraform output onboard_commands`
 
 ## Configured Repos
 
