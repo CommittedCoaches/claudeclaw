@@ -41,20 +41,26 @@ function extractRateLimitMessage(stdout: string, stderr: string): string | null 
 }
 
 function sameModelConfig(a: ModelConfig, b: ModelConfig): boolean {
-  return a.model.trim().toLowerCase() === b.model.trim().toLowerCase() && a.api.trim() === b.api.trim();
+  return (
+    a.model.trim().toLowerCase() === b.model.trim().toLowerCase() &&
+    a.api.trim() === b.api.trim() &&
+    a.proxyUrl.trim() === b.proxyUrl.trim()
+  );
 }
 
 function hasModelConfig(value: ModelConfig): boolean {
   return value.model.trim().length > 0 || value.api.trim().length > 0;
 }
 
-function buildChildEnv(baseEnv: Record<string, string>, model: string, api: string): Record<string, string> {
+function buildChildEnv(baseEnv: Record<string, string>, model: string, api: string, proxyUrl: string): Record<string, string> {
   const childEnv: Record<string, string> = { ...baseEnv };
   const normalizedModel = model.trim().toLowerCase();
 
   if (api.trim()) childEnv.ANTHROPIC_AUTH_TOKEN = api.trim();
 
-  if (normalizedModel === "glm") {
+  if (proxyUrl.trim()) {
+    childEnv.ANTHROPIC_BASE_URL = proxyUrl.trim();
+  } else if (normalizedModel === "glm") {
     childEnv.ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic";
     childEnv.API_TIMEOUT_MS = "3000000";
   }
@@ -66,6 +72,7 @@ async function runClaudeOnce(
   baseArgs: string[],
   model: string,
   api: string,
+  proxyUrl: string,
   baseEnv: Record<string, string>
 ): Promise<{ rawStdout: string; stderr: string; exitCode: number }> {
   const args = [...baseArgs];
@@ -75,7 +82,7 @@ async function runClaudeOnce(
   const proc = Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
-    env: buildChildEnv(baseEnv, model, api),
+    env: buildChildEnv(baseEnv, model, api, proxyUrl),
   });
 
   const [rawStdout, stderr] = await Promise.all([
@@ -210,11 +217,12 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const logFile = join(LOGS_DIR, `${name}-${timestamp}.log`);
 
-  const { security, model, api, fallback } = getSettings();
-  const primaryConfig: ModelConfig = { model, api };
+  const { security, model, api, proxyUrl, fallback } = getSettings();
+  const primaryConfig: ModelConfig = { model, api, proxyUrl };
   const fallbackConfig: ModelConfig = {
     model: fallback?.model ?? "",
     api: fallback?.api ?? "",
+    proxyUrl: fallback?.proxyUrl || proxyUrl,
   };
   const securityArgs = buildSecurityArgs(security);
 
@@ -259,7 +267,7 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
   const { CLAUDECODE: _, ...cleanEnv } = process.env;
   const baseEnv = { ...cleanEnv } as Record<string, string>;
 
-  let exec = await runClaudeOnce(args, primaryConfig.model, primaryConfig.api, baseEnv);
+  let exec = await runClaudeOnce(args, primaryConfig.model, primaryConfig.api, primaryConfig.proxyUrl, baseEnv);
   const primaryRateLimit = extractRateLimitMessage(exec.rawStdout, exec.stderr);
   let usedFallback = false;
 
@@ -267,7 +275,7 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
     console.warn(
       `[${new Date().toLocaleTimeString()}] Claude limit reached; retrying with fallback${fallbackConfig.model ? ` (${fallbackConfig.model})` : ""}...`
     );
-    exec = await runClaudeOnce(args, fallbackConfig.model, fallbackConfig.api, baseEnv);
+    exec = await runClaudeOnce(args, fallbackConfig.model, fallbackConfig.api, fallbackConfig.proxyUrl, baseEnv);
     usedFallback = true;
   }
 

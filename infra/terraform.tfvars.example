@@ -1,0 +1,27 @@
+aws_region = "us-east-2"
+vpc_id     = "vpc-0df0fac80f8edeae1"
+account_id = "975050128771"
+
+private_subnet_ids = [
+  "subnet-0a66a96fb0628f197", # admin-app-production-private-subnet-1 (us-east-2a)
+  "subnet-0a08276a53b77a3e2", # admin-app-production-private-subnet-2 (us-east-2b)
+]
+
+developers = {
+  kevin = {
+    instance_type     = "t3.medium"
+    github_username   = "kevinvegda"
+    slack_user_id     = ""                # Slack profile → More → Copy member ID
+    telegram_token    = ""                # @BotFather → /newbot → token
+    telegram_user_ids = []                # @userinfobot → your numeric ID, e.g. [123456789]
+    iam_policy_arns   = ["arn:aws:iam::aws:policy/AdministratorAccess"]
+  }
+  # Add more developers here:
+  # alice = {
+  #   instance_type     = "t3.medium"
+  #   github_username   = "alice-gh"
+  #   slack_user_id     = "U12345678"
+  #   telegram_token    = "123456:ABC-DEF..."
+  #   telegram_user_ids = [987654321]
+  # }
+}

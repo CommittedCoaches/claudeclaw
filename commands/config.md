@@ -16,6 +16,7 @@ Parse `$ARGUMENTS` to identify what the user wants. If no arguments are given, s
    **General**
    - Model: (e.g. `opus`, `sonnet`, `haiku`, `glm` or "default")
    - API token: (first 5 chars + "..." or "not configured"; used when `model` is `glm`)
+   - Proxy URL: (e.g. `http://litellm.internal:4000` or "not configured")
    - Fallback model: (e.g. `glm`, `sonnet`, or "not configured")
    - Fallback API token: (first 5 chars + "..." or "not configured")
    - Timezone: (e.g. `America/New_York` or "UTC")
@@ -121,6 +122,24 @@ Set or update the API token used when `model` is `glm`.
 4. Set top-level `api` to the new value.
 5. Write and confirm.
 
+### `proxy <url>` / `proxy`
+
+Set the LiteLLM proxy URL. When configured, all Claude API traffic routes through this URL.
+
+1. If URL is in `$ARGUMENTS`, use it directly.
+2. Otherwise, use **AskUserQuestion**: "What is the proxy URL? (e.g. http://litellm.internal:4000)" (header: "Proxy URL", options: let user type via Other)
+3. Read `.claude/claudeclaw/settings.json`.
+4. Set top-level `proxyUrl` to the new value.
+5. Write and confirm. Explain that `ANTHROPIC_BASE_URL` will be set to this URL for all Claude sessions.
+
+### `proxy off` / `proxy disable`
+
+Remove the proxy URL configuration.
+
+1. Read `.claude/claudeclaw/settings.json`.
+2. Set `proxyUrl` to `""`.
+3. Write and confirm.
+
 ### `fallback model <name>` / `fallback model`
 
 Set the fallback model used when the primary model hits a rate limit.
@@ -197,9 +216,11 @@ Reset all settings to defaults.
    {
      "model": "",
      "api": "",
+     "proxyUrl": "",
      "fallback": {
        "model": "",
-       "api": ""
+       "api": "",
+       "proxyUrl": ""
      },
      "timezone": "UTC",
      "timezoneOffsetMinutes": 0,
@@ -237,9 +258,11 @@ Location: `.claude/claudeclaw/settings.json`
 {
   "model": "opus",
   "api": "",
+  "proxyUrl": "",
   "fallback": {
     "model": "glm",
-    "api": ""
+    "api": "",
+    "proxyUrl": ""
   },
   "timezone": "America/New_York",
   "timezoneOffsetMinutes": -300,
@@ -272,8 +295,10 @@ Location: `.claude/claudeclaw/settings.json`
 |----------------------------|------------|------------------------------------------------|
 | `model`                    | string     | Claude model (`opus`, `sonnet`, `haiku`, `glm`, or full ID). Empty = default |
 | `api`                      | string     | API token used when model is `glm` (mapped to `ANTHROPIC_AUTH_TOKEN`) |
+| `proxyUrl`                 | string     | LiteLLM proxy URL. When set, `ANTHROPIC_BASE_URL` is set to this value for all Claude sessions |
 | `fallback.model`           | string     | Backup model used automatically if primary run returns rate-limit text (recommend `glm` for provider diversity) |
 | `fallback.api`             | string     | API token used with `fallback.model` (optional) |
+| `fallback.proxyUrl`        | string     | Proxy URL for fallback model (inherits top-level `proxyUrl` if not set) |
 | `timezone`                 | string     | IANA timezone name (e.g. `America/New_York`)   |
 | `timezoneOffsetMinutes`    | number     | UTC offset in minutes (auto-resolved from timezone) |
 | `heartbeat.enabled`        | boolean    | Whether the recurring heartbeat runs           |

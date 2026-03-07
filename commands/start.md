@@ -151,9 +151,11 @@ Defaults: `WEB_HOST=127.0.0.1`, `WEB_PORT=4632` unless changed via settings or `
 {
   "model": "opus",
   "api": "",
+  "proxyUrl": "",
   "fallback": {
     "model": "glm",
-    "api": ""
+    "api": "",
+    "proxyUrl": ""
   },
   "timezone": "UTC+0",
   "heartbeat": {
@@ -176,8 +178,10 @@ Defaults: `WEB_HOST=127.0.0.1`, `WEB_PORT=4632` unless changed via settings or `
 ```
 - `model` — Claude model to use (`opus`, `sonnet`, `haiku`, `glm`, or full model ID). Empty string uses default.
 - `api` — API token used when `model` is `glm` (passed as `ANTHROPIC_AUTH_TOKEN` for that provider path).
+- `proxyUrl` — LiteLLM proxy URL. When set, all Claude API traffic routes through this URL via `ANTHROPIC_BASE_URL`.
 - `fallback.model` — backup model used automatically if the primary run returns a rate-limit message. Prefer `glm` for provider diversity.
 - `fallback.api` — optional API token to use with `fallback.model`.
+- `fallback.proxyUrl` — optional proxy URL for the fallback model. Inherits top-level `proxyUrl` if not set.
 - `timezone` — canonical app timezone as UTC offset text (example: `UTC+1`, `UTC-5`, `UTC+03:30`). Heartbeat windows, jobs, and UI all use this timezone.
 - `heartbeat.enabled` — whether the recurring heartbeat runs
 - `heartbeat.interval` — minutes between heartbeat runs
