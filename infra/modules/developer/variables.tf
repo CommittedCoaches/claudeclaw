@@ -48,6 +48,12 @@ variable "slack_user_id" {
   default = ""
 }
 
+variable "slack_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "shared_env_secret_arn" {
   type        = string
   description = "ARN of the shared env secret (loaded into env file on boot)"

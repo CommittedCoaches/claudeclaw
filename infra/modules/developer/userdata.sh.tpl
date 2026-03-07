@@ -67,6 +67,9 @@ cat > /opt/claudeclaw/shared-env.sh <<ENVEOF
 # Shared platform keys — sourced by ClaudeClaw and setup script
 # Auto-generated from Secrets Manager. Do not edit manually.
 $(echo "$SHARED_SECRETS" | jq -r 'to_entries[] | "export \(.key)=\(.value | @sh)"')
+%{ if slack_token != "" ~}
+export SLACK_USER_TOKEN='${slack_token}'
+%{ endif ~}
 ENVEOF
 chmod 600 /opt/claudeclaw/shared-env.sh
 

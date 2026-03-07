@@ -191,6 +191,28 @@ Repos are cloned to `~/repos/` during `activate.sh`. Configured in `variables.tf
 
 **Per-dev extras:** Set `extra_repos` in `terraform.tfvars` for additional repos.
 
+## Slack Setup (Per-Developer)
+
+Each developer needs their own Slack user token from a Slack app with read-only permissions.
+
+1. **Create a Slack app** at https://api.slack.com/apps → "Create New App" → "From scratch"
+2. **Add OAuth scopes** under "OAuth & Permissions" → "User Token Scopes":
+   - `channels:history` — View messages in public channels
+   - `channels:read` — View basic info about public channels
+   - `groups:history` — View messages in private channels
+   - `groups:read` — View basic info about private channels
+   - `im:history` — View messages in DMs
+   - `im:read` — View basic info about DMs
+   - `mpim:history` — View messages in group DMs
+   - `mpim:read` — View basic info about group DMs
+   - `search:read` — Search workspace content
+   - `users:read` — View people in workspace
+3. **Install the app** to the workspace under "Install App"
+4. **Copy the User OAuth Token** (`xoxp-...`) and add it to `terraform.tfvars`:
+   ```hcl
+   slack_token = "xoxp-..."
+   ```
+
 ## Adding Shared Platform Keys
 
 To add a new shared key accessible to all instances:

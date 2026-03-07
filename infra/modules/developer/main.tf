@@ -191,6 +191,7 @@ resource "aws_instance" "dev" {
     telegram_token             = var.telegram_token
     telegram_user_ids          = jsonencode(var.telegram_user_ids)
     slack_user_id              = var.slack_user_id
+    slack_token                = var.slack_token
     shared_platform_secret_arn = var.shared_env_secret_arn
     github_username            = var.github_username
     clone_repos                = jsonencode(var.clone_repos)

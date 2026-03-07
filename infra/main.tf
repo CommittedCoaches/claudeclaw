@@ -110,6 +110,7 @@ module "developer" {
   telegram_user_ids     = each.value.telegram_user_ids
   github_username       = each.value.github_username
   slack_user_id         = each.value.slack_user_id
+  slack_token           = each.value.slack_token
   shared_env_secret_arn = aws_secretsmanager_secret.shared_platform_keys.arn
   shared_secret_arns    = local.shared_secret_arns
   iam_policy_arns       = each.value.iam_policy_arns

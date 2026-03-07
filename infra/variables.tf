@@ -25,6 +25,7 @@ variable "developers" {
     telegram_user_ids  = optional(list(number), [])
     github_username    = optional(string, "")
     slack_user_id      = optional(string, "")
+    slack_token        = optional(string, "")
     iam_policy_arns    = optional(list(string), [])
     extra_repos        = optional(list(string), [])
   }))
