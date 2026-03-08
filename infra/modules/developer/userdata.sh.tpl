@@ -11,6 +11,15 @@ export HOME="/root"
 apt-get update -y
 apt-get install -y curl git jq unzip fail2ban
 
+# --- 1b. Install AWS CLI v2 ---
+echo "[$(date)] Installing AWS CLI v2..."
+if ! command -v aws &>/dev/null; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+  unzip -qo /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/awscliv2.zip /tmp/aws
+fi
+
 # --- 2. Install Bun ---
 echo "[$(date)] Installing Bun..."
 curl -fsSL https://bun.sh/install | bash

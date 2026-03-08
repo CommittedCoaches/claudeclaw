@@ -236,6 +236,7 @@ export async function loadHeartbeatPromptTemplate(): Promise<string> {
 }
 
 async function execClaude(name: string, prompt: string): Promise<RunResult> {
+  const t0 = Date.now();
   await mkdir(LOGS_DIR, { recursive: true });
 
   const existing = await getSession();
@@ -265,6 +266,7 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
     args.push("--resume", existing.sessionId);
   }
 
+  const tSetup = Date.now();
   // Build the appended system prompt: prompt files + directory scoping
   // This is passed on EVERY invocation (not just new sessions) because
   // --append-system-prompt does not persist across --resume.
@@ -296,6 +298,9 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
   const { CLAUDECODE: _, ...cleanEnv } = process.env;
   const baseEnv = { ...cleanEnv } as Record<string, string>;
 
+  const tPromptDone = Date.now();
+  console.log(`[${new Date().toLocaleTimeString()}] ⏱ ${name}: prompt loaded (${tPromptDone - tSetup}ms), spawning claude...`);
+
   let exec = await runClaudeOnce(args, primaryConfig.model, primaryConfig.api, primaryConfig.proxyUrl, baseEnv);
   const primaryRateLimit = extractRateLimitMessage(exec.rawStdout, exec.stderr);
   let usedFallback = false;
@@ -307,6 +312,9 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
     exec = await runClaudeOnce(args, fallbackConfig.model, fallbackConfig.api, fallbackConfig.proxyUrl, baseEnv);
     usedFallback = true;
   }
+
+  const tClaudeDone = Date.now();
+  console.log(`[${new Date().toLocaleTimeString()}] ⏱ ${name}: claude finished (${tClaudeDone - tPromptDone}ms)${usedFallback ? " [fallback]" : ""}`);
 
   const rawStdout = exec.rawStdout;
   const stderr = exec.stderr;
@@ -353,13 +361,21 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
   ].join("\n");
 
   await Bun.write(logFile, output);
-  console.log(`[${new Date().toLocaleTimeString()}] Done: ${name} → ${logFile}`);
+  const tTotal = Date.now() - t0;
+  console.log(`[${new Date().toLocaleTimeString()}] ⏱ ${name}: total ${tTotal}ms (setup ${tSetup - t0}ms, prompt ${tPromptDone - tSetup}ms, claude ${tClaudeDone - tPromptDone}ms, post ${Date.now() - tClaudeDone}ms)`);
 
   return result;
 }
 
 export async function run(name: string, prompt: string): Promise<RunResult> {
-  return enqueue(() => execClaude(name, prompt));
+  const tQueued = Date.now();
+  return enqueue(async () => {
+    const waited = Date.now() - tQueued;
+    if (waited > 100) {
+      console.log(`[${new Date().toLocaleTimeString()}] ⏱ ${name}: waited in queue ${waited}ms`);
+    }
+    return execClaude(name, prompt);
+  });
 }
 
 function prefixUserMessageWithClock(prompt: string): string {
