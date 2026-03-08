@@ -101,7 +101,8 @@ cat > "$INSTALL_DIR/.claude/claudeclaw/settings.json" <<SETTINGS_EOF
   "security": {
     "level": "moderate",
     "allowedTools": [],
-    "disallowedTools": []
+    "disallowedTools": [],
+    "allowedDirectories": ["/home/${dev_name}/repos"]
   },
   "web": {
     "enabled": true,

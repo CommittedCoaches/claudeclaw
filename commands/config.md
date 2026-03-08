@@ -35,6 +35,7 @@ Parse `$ARGUMENTS` to identify what the user wants. If no arguments are given, s
    - Level: (locked/strict/moderate/unrestricted)
    - Allowed tools: (list or "default")
    - Disallowed tools: (list or "none")
+   - Allowed directories: (list or "none — project dir only")
 
    **Web UI**
    - Enabled: yes/no
@@ -180,6 +181,15 @@ Set the security level for Claude sessions.
 4. Set `security.level` to the new value.
 5. Write and confirm. Explain what the chosen level permits.
 
+### `security allowedDirectories ["/path1", "/path2"]`
+
+Set additional directories that Claude is allowed to access (beyond the project directory).
+
+1. Parse the JSON array of directory paths from `$ARGUMENTS`.
+2. Read `.claude/claudeclaw/settings.json`.
+3. Set `security.allowedDirectories` to the new array. Paths can be absolute or relative to the project directory.
+4. Write and confirm. Explain that Claude will be allowed to read/write in these directories in addition to the project directory.
+
 ### `security tools allow <tool1,tool2,...>` / `security tools disallow <tool1,tool2,...>`
 
 Add tools to the allowed or disallowed lists.
@@ -237,7 +247,8 @@ Reset all settings to defaults.
      "security": {
        "level": "moderate",
        "allowedTools": [],
-       "disallowedTools": []
+       "disallowedTools": [],
+       "allowedDirectories": []
      },
      "web": {
        "enabled": false,
@@ -281,7 +292,8 @@ Location: `.claude/claudeclaw/settings.json`
   "security": {
     "level": "moderate",
     "allowedTools": [],
-    "disallowedTools": []
+    "disallowedTools": [],
+    "allowedDirectories": []
   },
   "web": {
     "enabled": true,
@@ -313,6 +325,7 @@ Location: `.claude/claudeclaw/settings.json`
 | `security.level`           | string     | `locked` \| `strict` \| `moderate` \| `unrestricted` |
 | `security.allowedTools`    | string[]   | Extra tools to allow                           |
 | `security.disallowedTools` | string[]   | Tools to block                                 |
+| `security.allowedDirectories` | string[] | Extra directories Claude can access (beyond project dir). Absolute or relative to cwd |
 | `web.enabled`              | boolean    | Whether the web UI is served                   |
 | `web.host`                 | string     | Bind address (default `127.0.0.1`)             |
 | `web.port`                 | number     | Port number (default `4632`)                   |

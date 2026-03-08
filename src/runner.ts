@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
-import { join } from "path";
+import { join, resolve, isAbsolute } from "path";
 import { existsSync } from "fs";
 import { getSession, createSession } from "./sessions";
 import { getSettings, type ModelConfig, type SecurityConfig } from "./config";
@@ -100,12 +100,28 @@ async function runClaudeOnce(
 
 const PROJECT_DIR = process.cwd();
 
-const DIR_SCOPE_PROMPT = [
-  `CRITICAL SECURITY CONSTRAINT: You are scoped to the project directory: ${PROJECT_DIR}`,
-  "You MUST NOT read, write, edit, or delete any file outside this directory.",
-  "You MUST NOT run bash commands that modify anything outside this directory (no cd /, no /etc, no ~/, no ../.. escapes).",
-  "If a request requires accessing files outside the project, refuse and explain why.",
-].join("\n");
+function buildDirScopePrompt(extraDirs: string[]): string {
+  const allDirs = [PROJECT_DIR, ...extraDirs];
+  if (allDirs.length === 1) {
+    return [
+      `CRITICAL SECURITY CONSTRAINT: You are scoped to the project directory: ${PROJECT_DIR}`,
+      "You MUST NOT read, write, edit, or delete any file outside this directory.",
+      "You MUST NOT run bash commands that modify anything outside this directory (no cd /, no /etc, no ~/, no ../.. escapes).",
+      "If a request requires accessing files outside the project, refuse and explain why.",
+    ].join("\n");
+  }
+  return [
+    `CRITICAL SECURITY CONSTRAINT: You are scoped to these directories:`,
+    ...allDirs.map(d => `  - ${d}`),
+    "You MUST NOT read, write, edit, or delete any file outside these directories.",
+    "You MUST NOT run bash commands that modify anything outside these directories.",
+    "If a request requires accessing files outside these directories, refuse and explain why.",
+  ].join("\n");
+}
+
+function resolveAllowedDirectories(dirs: string[]): string[] {
+  return dirs.map(d => isAbsolute(d) ? d : resolve(PROJECT_DIR, d));
+}
 
 export async function ensureProjectClaudeMd(): Promise<void> {
   const managedPattern = new RegExp(
@@ -268,7 +284,10 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
     }
   }
 
-  if (security.level !== "unrestricted") appendParts.push(DIR_SCOPE_PROMPT);
+  if (security.level !== "unrestricted") {
+    const resolvedDirs = resolveAllowedDirectories(security.allowedDirectories ?? []);
+    appendParts.push(buildDirScopePrompt(resolvedDirs));
+  }
   if (appendParts.length > 0) {
     args.push("--append-system-prompt", appendParts.join("\n\n"));
   }

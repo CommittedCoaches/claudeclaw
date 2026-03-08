@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS: Settings = {
     excludeWindows: [],
   },
   telegram: { token: "", allowedUserIds: [] },
-  security: { level: "moderate", allowedTools: [], disallowedTools: [] },
+  security: { level: "moderate", allowedTools: [], disallowedTools: [], allowedDirectories: [] },
   web: { enabled: false, host: "127.0.0.1", port: 4632 },
   stt: { baseUrl: "", model: "" },
 };
@@ -59,6 +59,7 @@ export interface SecurityConfig {
   level: SecurityLevel;
   allowedTools: string[];
   disallowedTools: string[];
+  allowedDirectories: string[];
 }
 
 export interface Settings {
@@ -152,6 +153,9 @@ function parseSettings(raw: Record<string, any>): Settings {
         : [],
       disallowedTools: Array.isArray(raw.security?.disallowedTools)
         ? raw.security.disallowedTools
+        : [],
+      allowedDirectories: Array.isArray(raw.security?.allowedDirectories)
+        ? raw.security.allowedDirectories.filter((d: unknown) => typeof d === "string" && d.trim() !== "")
         : [],
     },
     web: {
