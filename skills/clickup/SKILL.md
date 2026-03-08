@@ -9,12 +9,7 @@ Access ClickUp workspaces, spaces, lists, and tasks.
 
 ## Getting Credentials
 
-```bash
-source /opt/claudeclaw/shared-env.sh
-# Uses $CLICKUP_API_KEY
-```
-
-All requests use the API key as a header:
+The `$CLICKUP_API_KEY` environment variable is pre-loaded. All requests use it as a header:
 
 ```bash
 curl -s -H "Authorization: $CLICKUP_API_KEY" "https://api.clickup.com/api/v2/<endpoint>"
