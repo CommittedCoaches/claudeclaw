@@ -591,7 +591,13 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     const result = await runUserMessage("telegram", prefixedPrompt);
 
     if (result.exitCode !== 0) {
-      await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`);
+      const errParts = [`Error (exit ${result.exitCode})`];
+      if (result.stderr?.trim()) errParts.push(`stderr: ${result.stderr.trim()}`);
+      if (result.stdout?.trim()) errParts.push(`stdout: ${result.stdout.trim()}`);
+      if (errParts.length === 1) errParts.push("No output captured");
+      const errDetail = errParts.join("\n\n");
+      // Truncate to fit Telegram's 4096 char limit
+      await sendMessage(config.token, chatId, errDetail.length > 4000 ? errDetail.slice(0, 4000) + "\n...(truncated)" : errDetail);
     } else {
       const { cleanedText, reactionEmoji } = extractReactionDirective(result.stdout || "");
       if (reactionEmoji) {
@@ -603,8 +609,11 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    const errStack = err instanceof Error ? err.stack : undefined;
     console.error(`[Telegram] Error for ${label}: ${errMsg}`);
-    await sendMessage(config.token, chatId, `Error: ${errMsg}`);
+    if (errStack) console.error(errStack);
+    const detail = errStack ? `${errMsg}\n\n${errStack}` : errMsg;
+    await sendMessage(config.token, chatId, `Error: ${detail.length > 4000 ? detail.slice(0, 4000) + "\n...(truncated)" : detail}`);
   } finally {
     clearInterval(typingInterval);
   }
