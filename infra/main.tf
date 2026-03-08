@@ -56,15 +56,6 @@ resource "aws_secretsmanager_secret" "shared_platform_keys" {
 #   aws secretsmanager put-secret-value --secret-id claudeclaw/shared-platform-keys \
 #     --secret-string '{"CLOSE_API_KEY":"...","GHL_API_KEY":"...","GROWTHBOOK_API_KEY":"..."}'
 
-# --- LiteLLM Module ---
-
-module "litellm" {
-  source = "./modules/litellm"
-
-  vpc_id             = var.vpc_id
-  private_subnet_ids = var.private_subnet_ids
-}
-
 # --- Developer Module (one per dev) ---
 
 # Shared secrets that all dev instances can read
@@ -104,7 +95,6 @@ module "developer" {
   instance_type         = each.value.instance_type
   vpc_id                = var.vpc_id
   subnet_id             = var.private_subnet_ids[index(keys(var.developers), each.key) % length(var.private_subnet_ids)]
-  litellm_alb_dns       = module.litellm.alb_dns_name
   repo_url              = var.repo_url
   telegram_token        = each.value.telegram_token
   telegram_user_ids     = each.value.telegram_user_ids
@@ -115,19 +105,6 @@ module "developer" {
   shared_secret_arns    = local.shared_secret_arns
   iam_policy_arns       = each.value.iam_policy_arns
   clone_repos           = distinct(concat(var.shared_repos, each.value.extra_repos))
-}
-
-# --- ALB Ingress Rules (breaks dependency cycle between litellm <-> developer) ---
-
-resource "aws_security_group_rule" "alb_ingress_from_dev" {
-  for_each = module.developer
-
-  type                     = "ingress"
-  from_port                = 4000
-  to_port                  = 4000
-  protocol                 = "tcp"
-  security_group_id        = module.litellm.alb_security_group_id
-  source_security_group_id = each.value.security_group_id
 }
 
 # --- Security Module ---

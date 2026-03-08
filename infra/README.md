@@ -1,4 +1,4 @@
-# ClaudeClaw Infrastructure — LiteLLM Proxy + AWS Deployment
+# ClaudeClaw Infrastructure — AWS Deployment
 
 ## Architecture Overview
 
@@ -9,27 +9,15 @@ Developer (SSM Session Manager)
    +-------------------------------------------+
    |  ClaudeClaw daemon (runs as dev user)     |
    |  Claude Code CLI (OAuth auth)             |
-   |  ANTHROPIC_BASE_URL -> ALB:4000           |
    |  Shared env: Close, GHL, GrowthBook keys  |
-   +-------------------+-----------------------+
-                       | (VPC internal)
-   Internal ALB (port 4000)
-                       |
-   ECS Fargate (private subnet)
-   +-------------------------------------------+
-   |  LiteLLM Proxy (pass-through mode)        |
-   |  - Forwards each dev's OAuth token        |
-   |  - Request logging per user               |
-   |  - Cost tracking per user                 |
-   |  - RDS PostgreSQL backend                 |
    +-------------------+-----------------------+
                        | (NAT Gateway)
                Anthropic API
 ```
 
-**Traffic flow:** Dev instance -> Internal ALB -> LiteLLM (ECS Fargate) -> Anthropic API
+**Traffic flow:** Claude Code CLI (OAuth) → Anthropic API
 
-Each developer authenticates via **Claude Code OAuth** (browser login). LiteLLM operates in pass-through mode — it forwards the dev's auth token to Anthropic while logging requests and tracking costs per user.
+Each developer authenticates via **Claude Code OAuth** (browser login). The CLI connects directly to the Anthropic API.
 
 Shared platform keys (Close, GHL, GrowthBook) are stored once in Secrets Manager and loaded into all instances.
 
@@ -48,14 +36,12 @@ All resources live in private subnets within `vpc-0df0fac80f8edeae1` (rds-vpc, u
 | Close API key | Shared (all devs) | Secrets Manager `claudeclaw/shared-platform-keys` |
 | GHL API key | Shared (all devs) | Secrets Manager `claudeclaw/shared-platform-keys` |
 | GrowthBook API key | Shared (all devs) | Secrets Manager `claudeclaw/shared-platform-keys` |
-| LiteLLM master key | Infra (admin only) | Secrets Manager (auto-generated) |
 
 ## Prerequisites
 
 - Terraform >= 1.10 (for S3-native lockfiles)
 - AWS CLI configured with appropriate credentials
 - S3 backend bucket `committed-coaches-terraform-state` exists
-- Docker (for building LiteLLM image — use `--platform linux/amd64` on ARM Macs)
 
 ## Quick Start (Admin)
 
@@ -77,28 +63,10 @@ After apply:
      --secret-string '{"CLOSE_API_KEY":"...","GHL_API_KEY":"...","GROWTHBOOK_API_KEY":"..."}'
    ```
 
-2. Build and push the LiteLLM Docker image to ECR (see below).
-
-3. Share onboarding commands with each developer:
+2. Share onboarding commands with each developer:
    ```bash
    terraform output onboard_commands
    ```
-
-## Building the LiteLLM Docker Image
-
-The LiteLLM config is baked into a custom Docker image:
-
-```bash
-cd modules/litellm/
-
-aws ecr get-login-password --region us-east-2 | \
-  docker login --username AWS --password-stdin 975050128771.dkr.ecr.us-east-2.amazonaws.com
-
-# Use --platform linux/amd64 if building on ARM Mac
-docker build --platform linux/amd64 -t claudeclaw-litellm .
-docker tag claudeclaw-litellm:latest 975050128771.dkr.ecr.us-east-2.amazonaws.com/claudeclaw-litellm:latest
-docker push 975050128771.dkr.ecr.us-east-2.amazonaws.com/claudeclaw-litellm:latest
-```
 
 ## Developer Onboarding
 
@@ -256,10 +224,6 @@ To add a new shared key accessible to all instances:
 - `prompts/IDENTITY.md` -- assistant personality
 - `prompts/USER.md` -- shared context about the team
 
-**LiteLLM model access** -- control at proxy level:
-- Restrict which models each virtual key can access
-- Set per-user budget limits via LiteLLM admin API
-
 ## Re-authenticating Claude Code
 
 If a dev's OAuth session expires:
@@ -302,24 +266,21 @@ Then open `http://localhost:4632`
 | Non-root daemon | systemd service runs as the dev's Linux user |
 | No SSH | SSM Session Manager only; zero ingress security group rules |
 | fail2ban | Installed and configured via userdata |
-| Firewall | SGs: dev→ALB only, ALB→ECS only, ECS→RDS only |
-| Network segmentation | All resources in private subnets, internal ALB |
-| Audit logging | CloudTrail + LiteLLM request logs to CloudWatch |
+| Firewall | Security groups: no ingress, egress to internet only |
+| Network segmentation | All resources in private subnets |
+| Audit logging | CloudTrail |
 | MFA enforcement | IAM policy denying actions without MFA |
 | Daily security audit | systemd timer running `security-audit.sh` |
 
 ## Verification Checklist
 
 - [ ] `terraform plan` shows expected resources
-- [ ] LiteLLM health: `curl http://<alb>:4000/health/liveliness` (from within VPC)
 - [ ] SSM session: `aws ssm start-session --target <id>`
 - [ ] `claude` auth completes successfully
 - [ ] `gh auth status` shows authenticated
 - [ ] ClaudeClaw daemon running: `systemctl status claudeclaw`
-- [ ] API routes through LiteLLM (check CloudWatch logs)
 - [ ] Shared env vars loaded: `source /opt/claudeclaw/shared-env.sh && env | grep API`
 - [ ] Security audit timer: `systemctl status claudeclaw-audit.timer`
 - [ ] fail2ban active: `fail2ban-client status`
 - [ ] EC2 has no public IP
-- [ ] ALB is internal-only
 - [ ] CloudTrail logging active

@@ -80,11 +80,9 @@ cat > "$INSTALL_DIR/.claude/claudeclaw/settings.json" <<SETTINGS_EOF
 {
   "model": "claude-sonnet-4-6",
   "api": "",
-  "proxyUrl": "",
   "fallback": {
     "model": "claude-opus-4-6",
-    "api": "",
-    "proxyUrl": ""
+    "api": ""
   },
   "timezone": "UTC",
   "timezoneOffsetMinutes": 0,

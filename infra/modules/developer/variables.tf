@@ -19,10 +19,6 @@ variable "subnet_id" {
   type = string
 }
 
-variable "litellm_alb_dns" {
-  type = string
-}
-
 variable "repo_url" {
   type = string
 }

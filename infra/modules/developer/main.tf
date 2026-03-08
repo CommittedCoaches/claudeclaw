@@ -187,7 +187,6 @@ resource "aws_instance" "dev" {
   user_data = templatefile("${path.module}/userdata.sh.tpl", {
     dev_name                   = var.dev_name
     repo_url                   = var.repo_url
-    litellm_alb_dns            = var.litellm_alb_dns
     telegram_token             = var.telegram_token
     telegram_user_ids          = jsonencode(var.telegram_user_ids)
     slack_user_id              = var.slack_user_id
