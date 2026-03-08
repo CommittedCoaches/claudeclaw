@@ -23,3 +23,13 @@ output "github_deploy_role_arn" {
   description = "IAM role ARN for GitHub Actions deploy workflow — set as AWS_DEPLOY_ROLE_ARN secret in GitHub"
   value       = module.security.github_deploy_role_arn
 }
+
+output "github_terraform_role_arn" {
+  description = "IAM role ARN for GitHub Actions terraform apply — set as AWS_TERRAFORM_ROLE_ARN secret in GitHub"
+  value       = module.security.github_terraform_role_arn
+}
+
+output "github_secrets_role_arn" {
+  description = "IAM role ARN for GitHub Actions set-dev-secrets — set as AWS_SECRETS_ROLE_ARN secret in GitHub"
+  value       = module.security.github_secrets_role_arn
+}

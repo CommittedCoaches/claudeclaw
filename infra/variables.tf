@@ -18,20 +18,6 @@ variable "account_id" {
   description = "AWS account ID"
 }
 
-variable "developers" {
-  type = map(object({
-    instance_type      = optional(string, "t3.medium")
-    telegram_token     = optional(string, "")
-    telegram_user_ids  = optional(list(number), [])
-    github_username    = optional(string, "")
-    slack_user_id      = optional(string, "")
-    slack_token        = optional(string, "")
-    iam_policy_arns    = optional(list(string), [])
-    extra_repos        = optional(list(string), [])
-  }))
-  description = "Map of developer name to config. iam_policy_arns overrides the default restricted policy — use [\"arn:aws:iam::aws:policy/AdministratorAccess\"] for admin."
-}
-
 variable "shared_repos" {
   type = list(string)
   default = [

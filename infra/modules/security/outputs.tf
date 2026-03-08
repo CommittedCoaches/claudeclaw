@@ -9,3 +9,11 @@ output "mfa_policy_arn" {
 output "github_deploy_role_arn" {
   value = aws_iam_role.github_actions_deploy.arn
 }
+
+output "github_terraform_role_arn" {
+  value = aws_iam_role.github_actions_terraform.arn
+}
+
+output "github_secrets_role_arn" {
+  value = aws_iam_role.github_actions_secrets.arn
+}

@@ -56,6 +56,26 @@ resource "aws_secretsmanager_secret" "shared_platform_keys" {
 #   aws secretsmanager put-secret-value --secret-id claudeclaw/shared-platform-keys \
 #     --secret-string '{"CLOSE_API_KEY":"...","GHL_API_KEY":"...","GROWTHBOOK_API_KEY":"..."}'
 
+# --- Developer Config (from developers.yaml + Secrets Manager) ---
+
+locals {
+  developers = yamldecode(file("${path.module}/developers.yaml"))
+}
+
+# Per-dev tokens stored in Secrets Manager (set via set-dev-secrets workflow)
+data "aws_secretsmanager_secret_version" "dev_tokens" {
+  for_each  = local.developers
+  secret_id = "claudeclaw/dev/${each.key}/tokens"
+}
+
+locals {
+  dev_tokens = {
+    for name, _ in local.developers : name => jsondecode(
+      data.aws_secretsmanager_secret_version.dev_tokens[name].secret_string
+    )
+  }
+}
+
 # --- Developer Module (one per dev) ---
 
 # Shared secrets that all dev instances can read
@@ -89,22 +109,22 @@ locals {
 
 module "developer" {
   source   = "./modules/developer"
-  for_each = var.developers
+  for_each = local.developers
 
   dev_name              = each.key
-  instance_type         = each.value.instance_type
+  instance_type         = lookup(each.value, "instance_type", "t3.medium")
   vpc_id                = var.vpc_id
-  subnet_id             = var.private_subnet_ids[index(keys(var.developers), each.key) % length(var.private_subnet_ids)]
+  subnet_id             = var.private_subnet_ids[index(keys(local.developers), each.key) % length(var.private_subnet_ids)]
   repo_url              = var.repo_url
-  telegram_token        = each.value.telegram_token
-  telegram_user_ids     = each.value.telegram_user_ids
-  github_username       = each.value.github_username
-  slack_user_id         = each.value.slack_user_id
-  slack_token           = each.value.slack_token
+  telegram_token        = local.dev_tokens[each.key].telegram_token
+  telegram_user_ids     = lookup(each.value, "telegram_user_ids", [])
+  github_username       = lookup(each.value, "github_username", "")
+  slack_user_id         = lookup(each.value, "slack_user_id", "")
+  slack_token           = try(local.dev_tokens[each.key].slack_token, "")
   shared_env_secret_arn = aws_secretsmanager_secret.shared_platform_keys.arn
   shared_secret_arns    = local.shared_secret_arns
-  iam_policy_arns       = each.value.iam_policy_arns
-  clone_repos           = distinct(concat(var.shared_repos, each.value.extra_repos))
+  iam_policy_arns       = lookup(each.value, "iam_policy_arns", [])
+  clone_repos           = distinct(concat(var.shared_repos, lookup(each.value, "extra_repos", [])))
 }
 
 # --- Security Module ---

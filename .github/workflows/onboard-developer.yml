@@ -1,18 +1,93 @@
-name: Post Onboarding Instructions
+name: Developer Onboarding
 
 on:
+  pull_request:
+    paths:
+      - 'infra/developers.yaml'
   push:
     branches: [master]
     paths:
       - 'infra/developers.yaml'
 
 jobs:
-  onboard:
-    name: Post onboarding instructions
+  # --- PR opened/updated: post instructions for the new dev ---
+  pre-merge-instructions:
+    name: Post setup instructions
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
       contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Detect new developers
+        id: detect
+        run: |
+          git show origin/${{ github.base_ref }}:infra/developers.yaml > /tmp/old.yaml 2>/dev/null || echo "" > /tmp/old.yaml
+          cp infra/developers.yaml /tmp/new.yaml
+
+          NEW_DEVS=$(python3 -c "
+          import yaml
+          old = yaml.safe_load(open('/tmp/old.yaml')) or {}
+          new = yaml.safe_load(open('/tmp/new.yaml')) or {}
+          added = [k for k in new if k not in old]
+          print(' '.join(added))
+          ")
+
+          echo "new_devs=$NEW_DEVS" >> "$GITHUB_OUTPUT"
+          if [ -n "$NEW_DEVS" ]; then
+            echo "has_new=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post pre-merge comment
+        if: steps.detect.outputs.has_new == 'true'
+        run: |
+          for DEV_NAME in ${{ steps.detect.outputs.new_devs }}; do
+            GITHUB_USER=$(python3 -c "
+          import yaml
+          with open('infra/developers.yaml') as f:
+              data = yaml.safe_load(f)
+          print(data['$DEV_NAME'].get('github_username', '$DEV_NAME'))
+          ")
+
+            gh pr comment ${{ github.event.pull_request.number }} --body "$(cat <<EOF
+          ## 👋 Welcome @${GITHUB_USER}!
+
+          Before this PR can be merged, please store your secrets:
+
+          1. **Get your Telegram bot token** from [@BotFather](https://t.me/BotFather)
+          2. **Run the [Set Dev Secrets](/${{ github.repository }}/actions/workflows/set-dev-secrets.yml) workflow:**
+             - Click **"Run workflow"**
+             - \`dev_name\`: \`${DEV_NAME}\`
+             - \`telegram_token\`: your bot token
+             - \`slack_token\`: your Slack user token (optional)
+          3. **Comment here** confirming you've done this
+
+          An admin will then review and merge. Terraform will provision your instance automatically.
+          EOF
+          )"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- Merged to master: terraform apply + post onboarding instructions ---
+  terraform-apply:
+    name: Provision infrastructure
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,7 +99,6 @@ jobs:
       - name: Detect new developers
         id: detect
         run: |
-          # Get developers.yaml from before and after this push
           git show HEAD~1:infra/developers.yaml > /tmp/old.yaml 2>/dev/null || echo "" > /tmp/old.yaml
           cp infra/developers.yaml /tmp/new.yaml
 
@@ -43,9 +117,46 @@ jobs:
             echo "has_new=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Find merged PR
-        id: pr
+      - name: Setup Terraform
         if: steps.detect.outputs.has_new == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.5"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        if: steps.detect.outputs.has_new == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Terraform Init
+        if: steps.detect.outputs.has_new == 'true'
+        working-directory: infra
+        run: terraform init
+
+      - name: Terraform Plan
+        if: steps.detect.outputs.has_new == 'true'
+        working-directory: infra
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        if: steps.detect.outputs.has_new == 'true'
+        working-directory: infra
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get instance info
+        if: steps.detect.outputs.has_new == 'true'
+        id: instances
+        working-directory: infra
+        run: |
+          INSTANCE_JSON=$(terraform output -json developer_instances)
+          echo "instances=$INSTANCE_JSON" >> "$GITHUB_OUTPUT"
+
+      - name: Find merged PR
+        if: steps.detect.outputs.has_new == 'true'
+        id: pr
         run: |
           PR_NUMBER=$(gh pr list --state merged --search "${{ github.sha }}" --json number -q '.[0].number' 2>/dev/null || echo "")
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
@@ -56,6 +167,8 @@ jobs:
         if: steps.detect.outputs.has_new == 'true' && steps.pr.outputs.number != ''
         run: |
           for DEV_NAME in ${{ steps.detect.outputs.new_devs }}; do
+            INSTANCE_ID=$(echo '${{ steps.instances.outputs.instances }}' | jq -r ".${DEV_NAME}")
+
             GITHUB_USER=$(python3 -c "
           import yaml
           with open('infra/developers.yaml') as f:
@@ -64,47 +177,38 @@ jobs:
           ")
 
             gh pr comment ${{ steps.pr.outputs.number }} --body "$(cat <<EOF
-          ## Welcome @${GITHUB_USER}! Your ClaudeClaw instance is being set up.
+          ## ✅ @${GITHUB_USER} — your instance is ready!
 
-          An admin will run \`terraform apply\` to provision your instance. Once that's done, they'll share your instance ID and you can complete setup:
+          **Instance ID:** \`${INSTANCE_ID}\`
 
-          ### Admin steps (for @kevinvegda)
-          - [ ] Add secrets to \`terraform.tfvars\` (telegram_token, slack_token for **${DEV_NAME}**)
-          - [ ] Run \`cd infra && terraform apply\`
-          - [ ] Share the onboard command: \`terraform output onboard_commands\`
+          ### Setup steps
 
-          ### Your setup steps
-          1. **Make sure you have:**
-             - AWS CLI installed and configured
-             - A [GitHub Personal Access Token](https://github.com/settings/tokens) with \`repo\` and \`read:org\` scopes
-             - Your git commit email
-
-          2. **Run the onboarding script** (admin will give you the instance ID):
+          1. **Connect via SSM** (requires AWS CLI + Session Manager plugin):
              \`\`\`bash
-             cd infra && ./scripts/onboard-dev.sh <instance-id>
+             cd infra && ./scripts/onboard-dev.sh ${INSTANCE_ID}
              \`\`\`
 
-          3. **Authenticate Claude Code** — inside the SSM session that opens:
+          2. **Authenticate Claude Code** — inside the SSM session:
              \`\`\`bash
              claude
              \`\`\`
              This shows a URL. Open it in your browser to log in.
 
-          4. **Activate the daemon** — copies your credentials and starts ClaudeClaw:
+          3. **Activate the daemon** — copies credentials and starts ClaudeClaw:
              \`\`\`bash
              sudo /opt/claudeclaw/activate.sh
              \`\`\`
 
-          5. **Verify everything works:**
+          4. **Verify:**
              \`\`\`bash
              sudo systemctl status claudeclaw   # daemon running
              ls ~/repos/                         # repos cloned
              \`\`\`
 
-          6. **Test Telegram** — send a message to your bot!
+          5. **Test Telegram** — send a message to your bot!
 
           ---
-          *If you need to re-authenticate later, SSM in, run \`claude\`, then \`sudo /opt/claudeclaw/activate.sh\`.*
+          *To re-authenticate later: SSM in, run \`claude\`, then \`sudo /opt/claudeclaw/activate.sh\`.*
           EOF
           )"
           done
