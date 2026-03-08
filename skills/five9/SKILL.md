@@ -45,8 +45,8 @@ Five9 scripts are normal code — write them and store in the `five9-scripts` re
 
 ```bash
 # Clone if not already present
-gh repo clone CommittedCoaches/five9-scripts /opt/claudeclaw/repos/five9-scripts 2>/dev/null || true
-cd /opt/claudeclaw/repos/five9-scripts
+gh repo clone CommittedCoaches/five9-scripts ~/repos/five9-scripts 2>/dev/null || true
+cd ~/repos/five9-scripts
 ```
 
 1. Write the script code
