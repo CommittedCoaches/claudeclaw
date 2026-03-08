@@ -5,7 +5,7 @@ on:
     branches: [master]
     paths-ignore:
       - 'infra/**'
-      - '*.md'
+      - 'README.md'
 
 jobs:
   deploy:
@@ -48,7 +48,7 @@ jobs:
             CMD_ID=$(aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
-              --parameters "{\"commands\":[\"export HOME=/root && git config --global --add safe.directory $INSTALL_DIR && cd $INSTALL_DIR && git pull origin master && git config --global --unset-all safe.directory && chown -R $DEV_NAME:$DEV_NAME $INSTALL_DIR && systemctl restart claudeclaw && echo DEPLOYED\"]}" \
+              --parameters "{\"commands\":[\"export HOME=/root && git config --global --add safe.directory $INSTALL_DIR && cd $INSTALL_DIR && git pull origin master && bash scripts/migrate-claude-md.sh $INSTALL_DIR/CLAUDE.md 2>&1 || true && git config --global --unset-all safe.directory && chown -R $DEV_NAME:$DEV_NAME $INSTALL_DIR && systemctl restart claudeclaw && echo DEPLOYED\"]}" \
               --query "Command.CommandId" --output text)
 
             echo "  Command: $CMD_ID"

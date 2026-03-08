@@ -78,11 +78,11 @@ echo "[$(date)] Writing settings.json..."
 mkdir -p "$INSTALL_DIR/.claude/claudeclaw"
 cat > "$INSTALL_DIR/.claude/claudeclaw/settings.json" <<SETTINGS_EOF
 {
-  "model": "",
+  "model": "claude-sonnet-4-6",
   "api": "",
-  "proxyUrl": "http://${litellm_alb_dns}:4000",
+  "proxyUrl": "",
   "fallback": {
-    "model": "",
+    "model": "claude-opus-4-6",
     "api": "",
     "proxyUrl": ""
   },

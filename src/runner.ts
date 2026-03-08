@@ -108,40 +108,52 @@ const DIR_SCOPE_PROMPT = [
 ].join("\n");
 
 export async function ensureProjectClaudeMd(): Promise<void> {
-  // Preflight-only initialization: never rewrite an existing project CLAUDE.md.
-  if (existsSync(PROJECT_CLAUDE_MD)) return;
+  const managedPattern = new RegExp(
+    `${CLAUDECLAW_BLOCK_START}[\\s\\S]*?${CLAUDECLAW_BLOCK_END}`,
+    "m"
+  );
 
+  // If CLAUDE.md exists, only update the managed block (leave user content intact)
+  if (existsSync(PROJECT_CLAUDE_MD)) {
+    try {
+      const existing = await readFile(PROJECT_CLAUDE_MD, "utf8");
+      if (!existing.includes(CLAUDECLAW_BLOCK_START)) return; // no managed block, don't touch
+
+      const promptContent = (await loadPrompts()).trim();
+      const newBlock = [CLAUDECLAW_BLOCK_START, promptContent, CLAUDECLAW_BLOCK_END].join("\n");
+      const currentBlock = existing.match(managedPattern)?.[0];
+      if (currentBlock === newBlock) return; // already up to date
+
+      const updated = existing.replace(managedPattern, newBlock);
+      await writeFile(PROJECT_CLAUDE_MD, updated, "utf8");
+      console.log(`[${new Date().toLocaleTimeString()}] Updated managed block in CLAUDE.md`);
+    } catch (e) {
+      console.error(`[${new Date().toLocaleTimeString()}] Failed to update CLAUDE.md:`, e);
+    }
+    return;
+  }
+
+  // New project: create CLAUDE.md from prompts
   const promptContent = (await loadPrompts()).trim();
-  const managedBlock = [
-    CLAUDECLAW_BLOCK_START,
-    promptContent,
-    CLAUDECLAW_BLOCK_END,
-  ].join("\n");
+  const managedBlock = [CLAUDECLAW_BLOCK_START, promptContent, CLAUDECLAW_BLOCK_END].join("\n");
 
   let content = "";
-
   if (existsSync(LEGACY_PROJECT_CLAUDE_MD)) {
     try {
-      const legacy = await readFile(LEGACY_PROJECT_CLAUDE_MD, "utf8");
-      content = legacy.trim();
+      content = (await readFile(LEGACY_PROJECT_CLAUDE_MD, "utf8")).trim();
     } catch (e) {
       console.error(`[${new Date().toLocaleTimeString()}] Failed to read legacy .claude/CLAUDE.md:`, e);
       return;
     }
   }
 
-  const normalized = content.trim();
   const hasManagedBlock =
-    normalized.includes(CLAUDECLAW_BLOCK_START) && normalized.includes(CLAUDECLAW_BLOCK_END);
-  const managedPattern = new RegExp(
-    `${CLAUDECLAW_BLOCK_START}[\\s\\S]*?${CLAUDECLAW_BLOCK_END}`,
-    "m"
-  );
+    content.includes(CLAUDECLAW_BLOCK_START) && content.includes(CLAUDECLAW_BLOCK_END);
 
   const merged = hasManagedBlock
-    ? `${normalized.replace(managedPattern, managedBlock)}\n`
-    : normalized
-      ? `${normalized}\n\n${managedBlock}\n`
+    ? `${content.replace(managedPattern, managedBlock)}\n`
+    : content
+      ? `${content}\n\n${managedBlock}\n`
       : `${managedBlock}\n`;
 
   try {
@@ -182,8 +194,6 @@ function buildSecurityArgs(security: SecurityConfig): string[] {
 /** Load and concatenate all prompt files from the prompts/ directory. */
 async function loadPrompts(): Promise<string> {
   const selectedPromptFiles = [
-    join(PROMPTS_DIR, "IDENTITY.md"),
-    join(PROMPTS_DIR, "USER.md"),
     join(PROMPTS_DIR, "SOUL.md"),
   ];
   const parts: string[] = [];
