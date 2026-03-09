@@ -73,7 +73,8 @@ async function runClaudeOnce(
   model: string,
   api: string,
   proxyUrl: string,
-  baseEnv: Record<string, string>
+  baseEnv: Record<string, string>,
+  options?: { timeoutMs?: number }
 ): Promise<{ rawStdout: string; stderr: string; exitCode: number }> {
   const args = [...baseArgs];
   const normalizedModel = model.trim().toLowerCase();
@@ -85,17 +86,37 @@ async function runClaudeOnce(
     env: buildChildEnv(baseEnv, model, api, proxyUrl),
   });
 
+  let timedOut = false;
+  const timer = options?.timeoutMs
+    ? setTimeout(() => { timedOut = true; proc.kill(); }, options.timeoutMs)
+    : null;
+
   const [rawStdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
   ]);
   await proc.exited;
+  if (timer) clearTimeout(timer);
 
   return {
     rawStdout,
     stderr,
-    exitCode: proc.exitCode ?? 1,
+    exitCode: timedOut ? -1 : proc.exitCode ?? 1,
   };
+}
+
+// --- Detached task tracking ---
+
+interface DetachedTask {
+  name: string;
+  startedAt: Date;
+  promise: Promise<RunResult>;
+}
+
+const activeTasks: Map<string, DetachedTask> = new Map();
+
+export function getActiveTasks(): { name: string; startedAt: Date }[] {
+  return [...activeTasks.values()].map(t => ({ name: t.name, startedAt: t.startedAt }));
 }
 
 const PROJECT_DIR = process.cwd();
@@ -286,6 +307,15 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
     }
   }
 
+  // Inject active background task info so the bot knows what's running
+  const tasks = getActiveTasks();
+  if (tasks.length > 0) {
+    const taskList = tasks.map(t =>
+      `- ${t.name} (running since ${t.startedAt.toLocaleTimeString()})`
+    ).join("\n");
+    appendParts.push(`Active background tasks:\n${taskList}\nThese are running independently. You can still respond to the user normally.`);
+  }
+
   if (security.level !== "unrestricted") {
     const resolvedDirs = resolveAllowedDirectories(security.allowedDirectories ?? []);
     appendParts.push(buildDirScopePrompt(resolvedDirs));
@@ -365,6 +395,114 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
   console.log(`[${new Date().toLocaleTimeString()}] ⏱ ${name}: total ${tTotal}ms (setup ${tSetup - t0}ms, prompt ${tPromptDone - tSetup}ms, claude ${tClaudeDone - tPromptDone}ms, post ${Date.now() - tClaudeDone}ms)`);
 
   return result;
+}
+
+const DEFAULT_DETACHED_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+async function execClaudeDetached(
+  name: string,
+  prompt: string,
+  opts?: { timeoutMs?: number }
+): Promise<RunResult> {
+  const t0 = Date.now();
+  await mkdir(LOGS_DIR, { recursive: true });
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const logFile = join(LOGS_DIR, `${name}-${timestamp}.log`);
+
+  const { security, model, api, proxyUrl, fallback } = getSettings();
+  const primaryConfig: ModelConfig = { model, api, proxyUrl };
+  const fallbackConfig: ModelConfig = {
+    model: fallback?.model ?? "",
+    api: fallback?.api ?? "",
+    proxyUrl: fallback?.proxyUrl || proxyUrl,
+  };
+  const securityArgs = buildSecurityArgs(security);
+
+  console.log(
+    `[${new Date().toLocaleTimeString()}] Running detached: ${name} (new session, security: ${security.level})`
+  );
+
+  // Detached tasks always use text output and never --resume (fresh session)
+  const args = ["claude", "-p", prompt, "--output-format", "text", ...securityArgs];
+
+  // Build system prompt same as execClaude
+  const promptContent = await loadPrompts();
+  const appendParts: string[] = [
+    "You are running inside ClaudeClaw.",
+  ];
+  if (promptContent) appendParts.push(promptContent);
+
+  if (existsSync(PROJECT_CLAUDE_MD)) {
+    try {
+      const claudeMd = await Bun.file(PROJECT_CLAUDE_MD).text();
+      if (claudeMd.trim()) appendParts.push(claudeMd.trim());
+    } catch (e) {
+      console.error(`[${new Date().toLocaleTimeString()}] Failed to read project CLAUDE.md:`, e);
+    }
+  }
+
+  if (security.level !== "unrestricted") {
+    const resolvedDirs = resolveAllowedDirectories(security.allowedDirectories ?? []);
+    appendParts.push(buildDirScopePrompt(resolvedDirs));
+  }
+  if (appendParts.length > 0) {
+    args.push("--append-system-prompt", appendParts.join("\n\n"));
+  }
+
+  const { CLAUDECODE: _, ...cleanEnv } = process.env;
+  const baseEnv = { ...cleanEnv } as Record<string, string>;
+  const timeoutMs = opts?.timeoutMs ?? DEFAULT_DETACHED_TIMEOUT_MS;
+
+  let exec = await runClaudeOnce(args, primaryConfig.model, primaryConfig.api, primaryConfig.proxyUrl, baseEnv, { timeoutMs });
+  const primaryRateLimit = extractRateLimitMessage(exec.rawStdout, exec.stderr);
+  let usedFallback = false;
+
+  if (primaryRateLimit && hasModelConfig(fallbackConfig) && !sameModelConfig(primaryConfig, fallbackConfig)) {
+    console.warn(
+      `[${new Date().toLocaleTimeString()}] Detached ${name}: limit reached; retrying with fallback${fallbackConfig.model ? ` (${fallbackConfig.model})` : ""}...`
+    );
+    exec = await runClaudeOnce(args, fallbackConfig.model, fallbackConfig.api, fallbackConfig.proxyUrl, baseEnv, { timeoutMs });
+    usedFallback = true;
+  }
+
+  const stdout = extractRateLimitMessage(exec.rawStdout, exec.stderr) ?? exec.rawStdout;
+  const result: RunResult = {
+    stdout,
+    stderr: exec.stderr,
+    exitCode: exec.exitCode,
+  };
+
+  const output = [
+    `# ${name} (detached)`,
+    `Date: ${new Date().toISOString()}`,
+    `Model config: ${usedFallback ? "fallback" : "primary"}`,
+    `Timeout: ${timeoutMs}ms`,
+    `Prompt: ${prompt}`,
+    `Exit code: ${result.exitCode}`,
+    "",
+    "## Output",
+    stdout,
+    ...(exec.stderr ? ["## Stderr", exec.stderr] : []),
+  ].join("\n");
+
+  await Bun.write(logFile, output);
+  const tTotal = Date.now() - t0;
+  console.log(`[${new Date().toLocaleTimeString()}] ⏱ ${name} (detached): total ${tTotal}ms${usedFallback ? " [fallback]" : ""}${exec.exitCode === -1 ? " [timed out]" : ""}`);
+
+  return result;
+}
+
+export async function runDetached(
+  name: string,
+  prompt: string,
+  opts?: { timeoutMs?: number }
+): Promise<RunResult> {
+  const taskId = `${name}-${Date.now()}`;
+  const resultPromise = execClaudeDetached(name, prompt, opts);
+  activeTasks.set(taskId, { name, startedAt: new Date(), promise: resultPromise });
+  resultPromise.finally(() => activeTasks.delete(taskId));
+  return resultPromise;
 }
 
 export async function run(name: string, prompt: string): Promise<RunResult> {
